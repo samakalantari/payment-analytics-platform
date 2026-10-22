@@ -50,6 +50,41 @@ services:
       postgres-source:
         condition: service_healthy
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.3
+    container_name: zibal-clickhouse
+    restart: unless-stopped
+
+    environment:
+      CLICKHOUSE_DB: analytics
+      CLICKHOUSE_USER: zibal
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+      CLICKHOUSE_ALWAYS_RUN_INITDB_SCRIPTS: "1"
+
+    ports:
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9000:9000"
+
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./docker/clickhouse/init:/docker-entrypoint-initdb.d:ro
+
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "clickhouse-client --user zibal --password \"$${CLICKHOUSE_PASSWORD}\" --query 'SELECT 1' >/dev/null"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
 volumes:
   postgres_source_data:
   metabase_data:
+  clickhouse_data:
