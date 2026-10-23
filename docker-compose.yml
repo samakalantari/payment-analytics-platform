@@ -244,6 +244,63 @@ services:
       metabase:
         condition: service_started
 
+  # Keep the successful smoke marker in this container so ordinary repeated
+  # "up" calls do not rerun source-to-sink checks while the simulator writes.
+  startup-readiness:
+    image: payment-analytics-tools:local
+    restart: "no"
+    entrypoint: ["sh", "-ec"]
+    command:
+      - "if [ ! -f /tmp/smoke-test-passed ]; then if ! python /app/smoke_test.py; then exit 1; fi; touch /tmp/smoke-test-passed; fi; exec tail -f /dev/null"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-payment_db}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      SMOKE_TIMEOUT_SECONDS: ${SMOKE_TIMEOUT_SECONDS:-1800}
+    volumes:
+      - ./scripts/smoke_test.py:/app/smoke_test.py:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/smoke-test-passed"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 35m
+    depends_on:
+      postgres-source:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-connect:
+        condition: service_started
+      seed-data:
+        condition: service_completed_successfully
+      connector-init:
+        condition: service_completed_successfully
+      cdc-consumer:
+        condition: service_started
+      metabase:
+        condition: service_started
+
+  change-simulator:
+    image: payment-analytics-tools:local
+    restart: unless-stopped
+    command: ["python", "-u", "/app/change_simulator.py"]
+    environment:
+      POSTGRES_HOST: postgres-source
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-payment_db}
+    volumes:
+      - ./scripts/change_simulator.py:/app/change_simulator.py:ro
+    depends_on:
+      startup-readiness:
+        condition: service_healthy
+        restart: true
+
 volumes:
   postgres_source_data:
   metabase_data:
