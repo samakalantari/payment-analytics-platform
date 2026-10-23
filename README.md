@@ -39,3 +39,9 @@ Stop or restart only the simulator with:
 docker compose stop change-simulator
 docker compose start change-simulator
 ```
+
+## Data governance and modeling
+
+See [data governance, PII flow and ownership](docs/data_governance.md) and the
+[data dictionary and modeling rules](docs/data_dictionary.md) for the current
+field flow, metric definitions, retention and quality-check boundaries.
