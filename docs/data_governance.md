@@ -49,6 +49,9 @@ assignments are specified in the project.
 - Kafka broker log retention is configured to 168 hours (`KAFKA_LOG_RETENTION_HOURS`).
   This is a broker setting; the repository does not specify a separate retention
   override for the CDC topics. Kafka Connect internal topics use broker defaults.
+- PostgreSQL logical replication uses the Debezium slot `zibal_cdc_slot`.
+  Compose does not configure `max_slot_wal_keep_size`; if the connector stops
+  consuming for an extended period, retained WAL can grow and consume disk.
 - PostgreSQL, ClickHouse raw/staging/mart tables and Metabase use named persistent
   volumes. The SQL definitions shown here contain no row-level TTL or scheduled
   deletion policy. Volume persistence is not a retention schedule.
@@ -69,6 +72,9 @@ assignments are specified in the project.
   refresh work grows with the source Fact data and consumes ClickHouse resources.
 - No daily scheduler for quality or reconciliation checks is configured. The
   reconciliation command is one-shot and may be invoked by an external scheduler.
+- This is a single-host Docker Compose demo. Kafka/Connect run on the internal
+  Compose network without configured Kafka ACLs or TLS; this is not a production
+  high-availability or production security configuration.
 
 ## Quality and reconciliation operation
 
@@ -95,6 +101,33 @@ they are integration tests and are not run by routine reconciliation. See
 [data dictionary and modeling rules](data_dictionary.md) for grains, metric
 definitions and temporal attribution.
 
+The checked-in CDC and schema-evolution SQL scripts issue source-side changes;
+they do not assert the resulting ClickHouse row state. The recovery SQL expects
+the consumer to be stopped while its test transaction is inserted and updated,
+but does not itself stop/restart the consumer or remove the test row. Treat
+these scripts as manual mutation steps, not as fully automated end-to-end
+assertions.
+
+The SQL files use `psql` metacommands and are intended to be invoked separately
+from the repository root against a controlled local database. Load the local
+`.env` values in the shell without printing them:
+
+```sh
+set -a
+. ./.env
+set +a
+export PGPASSWORD="$POSTGRES_PASSWORD"
+psql -h 127.0.0.1 -p 5433 -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  -v ON_ERROR_STOP=1 -f tests/test_cdc.sql
+```
+
+Replace the final file path with `tests/test_schema_evolution.sql` or
+`tests/test_recovery.sql` to run those scripts individually. Schema evolution
+adds the `installments` column and leaves it in place. Recovery expects the
+simulator and consumer to be stopped and leaves its inserted row in the source.
+Do not run these mutation scripts as routine checks or against data you need to
+preserve.
+
 ## Known limitations
 
 - Initial Debezium snapshot records for merchants are assigned the sentinel
@@ -110,3 +143,7 @@ definitions and temporal attribution.
   as history, subject to the timestamp and ordering behavior above.
 - The automated mart PII test is a column-name check. It does not prove that all
   serialized values or future view expressions are free of sensitive content.
+- PostgreSQL owner identifiers and mobile numbers are excluded from ClickHouse
+  staging and marts, not masked or hashed. This does not satisfy the original
+  assignment's explicit mask-or-hash requirement; no such transformation is
+  implemented.

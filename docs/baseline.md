@@ -1,32 +1,16 @@
-# Metabase Performance Benchmark
+# PostgreSQL Dashboard Baseline
 
-## 1. Baseline Performance Results
+The current recorded PostgreSQL baseline timings are the values in
+[benchmark.md](benchmark.md). Those measurements were supplied by the project
+owner as one-off observations; this repository does not contain the baseline
+SQL, exported Metabase questions, or a repeatable timing protocol.
 
-### Environment
+Older PostgreSQL timing observations have been superseded and are intentionally
+omitted so they are not mistaken for the current benchmark run. The original
+dashboard is described in the assignment as querying PostgreSQL `core` directly.
+The source schema and seed are implemented in
+`docker/postgres/init/01_schema.sql` and `scripts/seed_data.py`.
 
-- **Database:** PostgreSQL 17 (OLTP)
-- **Transactions:** 5,000,000
-- **Merchants:** 2,000
-- **Dashboard:** Daily Sales - OLTP Baseline
-- **BI Tool:** Metabase
-
-### Initial Execution Times
-
-| Card | Execution Time (s) | Execution Time (ms) |
-|---|---:|---:|
-| 01 - Daily Sales | 2.5 | 2,500 |
-| 02 - Success Rate | 2.0 | 2,000 |
-| 03 - Top Merchants | 1.7 | 1,700 |
-| 04 - Fees | 2.2 | 2,200 |
-| 05 - Risk Analysis | 5.1 | 5,100 |
-
-### Initial Observations
-
-- **Slowest query:** Risk Analysis (5.1 seconds).
-- **Fastest query:** Top Merchants (1.7 seconds).
-- Risk Analysis takes approximately 3 times longer than Top Merchants.
-- All queries currently execute directly against the OLTP database.
-
-### Performance Analysis
-
-The current
+For the current timings, query-by-query equivalence to the ClickHouse reports
+cannot be verified from versioned query text. See the benchmark documentation
+for provenance, calculated ratios, refresh-cost exclusions and limitations.

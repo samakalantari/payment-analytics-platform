@@ -5,6 +5,10 @@ describe implemented behavior, including its limitations.
 
 ## Identifiers, allowed values and grains
 
+All transaction `amount` and `fee_amount` values are integer rials, as specified
+by the assignment. The schema does not attach a currency type or enforce a fee
+calculation rule.
+
 | Model | Grain | Identifier / key | Notes |
 |---|---|---|---|
 | `core.merchants` | One current source row per merchant | `merchant_id` primary key | Includes owner national ID and mobile in source |
@@ -55,6 +59,13 @@ whose latest status is `REVERSED` is not counted as successful.
 The seed generator produces `fee_amount` as integer `amount // 100`, but the
 database schema does not enforce that ratio. Reports sum the stored fee value;
 they do not recalculate fees.
+
+The assignment's cards also specify report windows (90 days for daily sales and
+fees, 30 days for daily channel success, and the current month for top merchants).
+The ClickHouse marts aggregate all dates. Those filters may exist in Metabase
+questions, but their SQL is not tracked here and could not be verified. The risk
+card is required to show risk at transaction time; the Fact's SCD2 join and
+`monthly_risk_volume` definition implement that attribution in model SQL.
 
 ## Transaction-time merchant attribution
 
