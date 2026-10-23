@@ -84,7 +84,110 @@ services:
       retries: 10
       start_period: 30s
 
+  kafka:
+    image: apache/kafka:3.9.1
+    container_name: zibal-kafka
+    restart: unless-stopped
+
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 1
+
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:9092 >/dev/null 2>&1
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 20s
+
+  kafka-connect:
+    image: quay.io/debezium/connect:3.3
+    container_name: zibal-kafka-connect
+    restart: unless-stopped
+
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: zibal-connect-group
+
+      CONFIG_STORAGE_TOPIC: zibal_connect_configs
+      OFFSET_STORAGE_TOPIC: zibal_connect_offsets
+      STATUS_STORAGE_TOPIC: zibal_connect_statuses
+
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+
+      HEAP_OPTS: "-Xms256m -Xmx768m"
+
+    ports:
+      - "127.0.0.1:8083:8083"
+
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres-source:
+        condition: service_healthy
+
+  connector-init:
+    image: python:3.12-alpine
+    container_name: zibal-connector-init
+    restart: "no"
+
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    volumes:
+      - ./docker/debezium/register.py:/app/register.py:ro
+
+    command: python /app/register.py
+
+    depends_on:
+      kafka-connect:
+        condition: service_started
+
+  cdc-consumer:
+    build:
+      context: ./cdc_consumer
+    container_name: zibal-cdc-consumer
+    restart: unless-stopped
+
+    environment:
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+
+    depends_on:
+      kafka:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+
 volumes:
   postgres_source_data:
   metabase_data:
   clickhouse_data:
+  kafka_data:
