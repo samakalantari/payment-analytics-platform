@@ -1,7 +1,5 @@
-
--- Compare successful transaction counts
--- across all reporting marts.
-
+-- Reconcile successful transaction counts across reporting marts.
+-- throwIf ensures mismatches become SQL errors and a nonzero runner exit.
 WITH metrics AS
 (
     SELECT
@@ -13,42 +11,45 @@ WITH metrics AS
 
     SELECT
         'daily_sales',
-        sum(successful_count)
+        ifNull(sum(successful_count), 0)
     FROM mart.daily_sales
 
     UNION ALL
 
     SELECT
         'daily_channel_success',
-        sum(successful_transactions)
+        ifNull(sum(successful_transactions), 0)
     FROM mart.daily_channel_success
 
     UNION ALL
 
     SELECT
         'merchant_monthly_sales',
-        sum(successful_transactions)
+        ifNull(sum(successful_transactions), 0)
     FROM mart.merchant_monthly_sales
 
     UNION ALL
 
     SELECT
         'fees_by_mcc_province_daily',
-        sum(successful_transactions)
+        ifNull(sum(successful_transactions), 0)
     FROM mart.fees_by_mcc_province_daily
 
     UNION ALL
 
     SELECT
         'monthly_risk_volume',
-        sum(successful_transactions)
+        ifNull(sum(successful_transactions), 0)
     FROM mart.monthly_risk_volume
 )
-SELECT
-    model,
-    successful_count,
-    successful_count -
-        (SELECT successful_count FROM metrics WHERE model = 'fact')
-        AS difference
-FROM metrics
-ORDER BY model;
+SELECT throwIf(
+    countIf(successful_count !=
+        (SELECT
+            successful_count
+        FROM metrics
+        WHERE model = 'fact')) > 0,
+    'FAIL: reporting mart successful transaction count mismatch'
+)
+FROM metrics;
+
+SELECT 'MART RECONCILIATION PASSED' AS result;

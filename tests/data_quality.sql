@@ -83,4 +83,17 @@ WHERE database = 'mart'
       OR positionCaseInsensitive(name, 'card_bin') > 0
   );
 
+-- Test 9: Current transactions must resolve to a non-deleted merchant history.
+SELECT throwIf(
+    count() > 0,
+    'FAIL: transaction references missing merchant history'
+)
+FROM staging.transactions_current AS t
+WHERE t.merchant_id NOT IN
+(
+    SELECT merchant_id
+    FROM staging.merchants_versions FINAL
+    WHERE is_deleted = 0
+);
+
 SELECT 'DATA QUALITY CHECKS PASSED' AS result;
