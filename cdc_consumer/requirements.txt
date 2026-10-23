@@ -1,2 +1,4 @@
 confluent-kafka>=2.6,<3
 clickhouse-connect>=0.8,<1
+psycopg[binary]>=3.2,<4
+python-dotenv>=1,<2

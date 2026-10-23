@@ -14,9 +14,9 @@ config = {
 
     "database.hostname": "postgres-source",
     "database.port": "5432",
-    "database.user": "zibal",
+    "database.user": os.getenv("POSTGRES_USER", "admin"),
     "database.password": os.environ["POSTGRES_PASSWORD"],
-    "database.dbname": "payment_db",
+    "database.dbname": os.getenv("POSTGRES_DB", "payment_db"),
 
     "topic.prefix": "zibal",
     "plugin.name": "pgoutput",
@@ -62,8 +62,18 @@ else:
     raise RuntimeError("Kafka Connect did not become ready")
 
 try:
-    request("GET", f"/connectors/{CONNECTOR_NAME}")
-    print("Connector already exists; preserving its configuration.")
+    existing = json.loads(request("GET", f"/connectors/{CONNECTOR_NAME}"))
+    for key in (
+        "connector.class",
+        "database.hostname",
+        "database.user",
+        "database.dbname",
+        "topic.prefix",
+        "slot.name",
+    ):
+        if existing.get("config", {}).get(key) != config[key]:
+            raise RuntimeError(f"Existing connector configuration differs for {key}; preserving it")
+    print("Connector already exists with compatible configuration; preserving offsets.", flush=True)
 except urllib.error.HTTPError as error:
     if error.code != 404:
         raise
@@ -73,4 +83,18 @@ except urllib.error.HTTPError as error:
         "/connectors",
         {"name": CONNECTOR_NAME, "config": config},
     )
-    print("CDC connector created successfully.")
+    print("CDC connector created successfully.", flush=True)
+
+# Validate that the connector task is running before marking this init job done.
+for _ in range(120):
+    try:
+        status = json.loads(request("GET", f"/connectors/{CONNECTOR_NAME}/status"))
+        if status.get("connector", {}).get("state") == "RUNNING" and status.get("tasks"):
+            if all(task.get("state") == "RUNNING" for task in status["tasks"]):
+                print("CDC connector and task are running.", flush=True)
+                break
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        pass
+    time.sleep(5)
+else:
+    raise RuntimeError("CDC connector task did not reach RUNNING state")

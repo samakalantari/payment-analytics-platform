@@ -5,6 +5,7 @@ import time
 
 import clickhouse_connect
 from confluent_kafka import Consumer, KafkaException
+from bootstrap_clickhouse import bootstrap
 
 
 BATCH_SIZE = 5000
@@ -124,6 +125,7 @@ def flush_batch(client, consumer, rows, messages):
 
 def main():
     client = connect_clickhouse()
+    bootstrap(client)
     consumer = create_consumer()
 
     consumer.subscribe(TOPICS)

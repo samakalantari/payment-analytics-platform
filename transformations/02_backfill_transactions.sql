@@ -32,4 +32,6 @@ FROM
     FROM raw.cdc_events FINAL
     WHERE topic = 'zibal.core.transactions'
       AND operation IN ('r', 'c', 'u', 'd')
-);
+) AS events
+LEFT ANTI JOIN staging.transactions_versions AS existing
+    USING (partition_id, kafka_offset);

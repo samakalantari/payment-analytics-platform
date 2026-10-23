@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: payment_db
+      POSTGRES_DB: ${POSTGRES_DB:-payment_db}
 
     ports:
       - "127.0.0.1:5433:5432"
@@ -26,7 +26,7 @@ services:
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d payment_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-payment_db}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -161,6 +161,8 @@ services:
 
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_DB: ${POSTGRES_DB:-payment_db}
 
     volumes:
       - ./docker/debezium/register.py:/app/register.py:ro
@@ -170,21 +172,77 @@ services:
     depends_on:
       kafka-connect:
         condition: service_started
+      seed-data:
+        condition: service_completed_successfully
 
-  cdc-consumer:
+  seed-data:
+    image: payment-analytics-tools:local
     build:
       context: ./cdc_consumer
+    restart: "no"
+    environment:
+      POSTGRES_HOST: postgres-source
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-payment_db}
+    volumes:
+      - ./scripts/seed_data.py:/app/seed_data.py:ro
+    command: ["python", "/app/seed_data.py"]
+    depends_on:
+      postgres-source:
+        condition: service_healthy
+
+  cdc-consumer:
+    image: payment-analytics-tools:local
     container_name: zibal-cdc-consumer
     restart: unless-stopped
 
     environment:
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
 
+    volumes:
+      - ./transformations:/app/transformations:ro
+      - ./scripts/bootstrap_clickhouse.py:/app/bootstrap_clickhouse.py:ro
+
     depends_on:
       kafka:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
+      connector-init:
+        condition: service_completed_successfully
+
+  smoke-test:
+    profiles: ["tools"]
+    image: payment-analytics-tools:local
+    restart: "no"
+    command: ["python", "/app/smoke_test.py"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-payment_db}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      SMOKE_TIMEOUT_SECONDS: ${SMOKE_TIMEOUT_SECONDS:-1800}
+    volumes:
+      - ./scripts/smoke_test.py:/app/smoke_test.py:ro
+    depends_on:
+      postgres-source:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-connect:
+        condition: service_started
+      seed-data:
+        condition: service_completed_successfully
+      connector-init:
+        condition: service_completed_successfully
+      cdc-consumer:
+        condition: service_started
+      metabase:
+        condition: service_started
 
 volumes:
   postgres_source_data:
